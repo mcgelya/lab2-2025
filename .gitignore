@@ -1,0 +1,8 @@
+out/
+.venv/
+build/
+build-release/
+.vscode/
+.clang-format
+.DS_store
+.clangd
