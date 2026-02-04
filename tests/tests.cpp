@@ -91,7 +91,9 @@ TEST_CASE("ArraySeq") {
 
     SECTION("Cap") {
         auto start_cap = seq.GetCapacity();
-        for (int i = 0; i < 20; ++i) seq.Append(100 + i);
+        for (int i = 0; i < 20; ++i) {
+            seq.Append(100 + i);
+        }
         REQUIRE(seq.GetLength() == 23);
         REQUIRE(seq.GetCapacity() >= seq.GetLength());
         REQUIRE(seq.GetCapacity() > start_cap);

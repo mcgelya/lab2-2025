@@ -7,6 +7,10 @@ template <typename Key, typename Value>
 struct KeyValue {
     Key key;
     Value value;
+
+    KeyValue() = default;
+    KeyValue(Key k, Value v) : key(std::move(k)), value(std::move(v)) {
+    }
 };
 
 template <typename Key, typename Value>

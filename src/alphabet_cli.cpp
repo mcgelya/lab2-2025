@@ -17,9 +17,12 @@ struct CliOptions {
     AlphabetIndexMode mode = AlphabetIndexMode::Words;
     std::string backend = "hash";  // hash | flat | both
     bool bench = false;
-    std::vector<size_t> bench_iters = {1000, 10000, 50000};
-    std::string export_csv;       // word,page mapping
-    std::string export_bench_csv; // benchmark table
+    std::vector<size_t> bench_iters = {30000, 40000, 50000, 60000, 70000};
+    std::vector<size_t> bench_gen_sizes = {10000, 50000};
+    size_t gen_count = 0;
+    size_t gen_max_len = 8;
+    std::string export_csv;
+    std::string export_bench_csv;
 };
 
 std::string ReadText(const std::string& file_path) {
@@ -35,38 +38,61 @@ std::string ReadText(const std::string& file_path) {
     return ss.str();
 }
 
+std::string GenerateText(size_t count, size_t max_len) {
+    static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz";
+    std::ostringstream ss;
+    for (size_t i = 0; i < count; ++i) {
+        size_t len = 1 + (i % max_len);
+        for (size_t j = 0; j < len; ++j) {
+            ss << alphabet[(i + j) % (sizeof(alphabet) - 1)];
+        }
+        ss << ' ';
+    }
+    return ss.str();
+}
+
 CliOptions InteractiveDialog() {
     CliOptions opt;
     std::cout << "=== Алфавитный указатель ===\n";
-    std::cout << "1) Читать текст из файла? (y/n): ";
-    char c;
-    std::cin >> c;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    if (c == 'y' || c == 'Y') {
-        std::cout << "Укажите путь: ";
-        std::getline(std::cin, opt.file_path);
-    }
-    std::cout << "2) Размер страницы (по умолчанию 100): ";
+    std::cout << "1) Источник текста: (f)ile / (k)eyboard / (g)enerate [k]: ";
     std::string line;
     std::getline(std::cin, line);
-    if (!line.empty()) opt.page_size = std::stoul(line);
+    char mode = line.empty() ? 'k' : line[0];
+    if (mode == 'f' || mode == 'F') {
+        std::cout << "Укажите путь: ";
+        std::getline(std::cin, opt.file_path);
+    } else if (mode == 'g' || mode == 'G') {
+        std::cout << "Сколько слов сгенерировать? [10000]: ";
+        std::getline(std::cin, line);
+        opt.gen_count = line.empty() ? 10000 : std::stoull(line);
+        std::cout << "Максимальная длина слова? [8]: ";
+        std::getline(std::cin, line);
+        opt.gen_max_len = line.empty() ? 8 : std::stoull(line);
+    }
+    std::cout << "2) Размер страницы (по умолчанию 100): ";
+    std::getline(std::cin, line);
+    if (!line.empty())
+        opt.page_size = std::stoul(line);
 
     std::cout << "3) Режим (w=words, c=chars) [w]: ";
     std::getline(std::cin, line);
-    if (!line.empty() && (line[0] == 'c' || line[0] == 'C')) opt.mode = AlphabetIndexMode::Chars;
+    if (!line.empty() && (line[0] == 'c' || line[0] == 'C'))
+        opt.mode = AlphabetIndexMode::Chars;
 
     std::cout << "4) Структура (h=hash, f=flat, b=both) [h]: ";
     std::getline(std::cin, line);
     if (!line.empty()) {
-        if (line[0] == 'f' || line[0] == 'F') opt.backend = "flat";
-        else if (line[0] == 'b' || line[0] == 'B') opt.backend = "both";
+        if (line[0] == 'f' || line[0] == 'F')
+            opt.backend = "flat";
+        else if (line[0] == 'b' || line[0] == 'B')
+            opt.backend = "both";
     }
 
     std::cout << "5) Запустить бенчмарк? (y/n) [n]: ";
     std::getline(std::cin, line);
     if (!line.empty() && (line[0] == 'y' || line[0] == 'Y')) {
         opt.bench = true;
-        std::cout << "   Числа запросов через запятую (по умолчанию 1000,10000,50000): ";
+        std::cout << "   Числа запросов через запятую (по умолчанию 30000,40000,50000,60000,70000): ";
         std::getline(std::cin, line);
         if (!line.empty()) {
             opt.bench_iters.clear();
@@ -76,7 +102,21 @@ CliOptions InteractiveDialog() {
                 if (!token.empty())
                     opt.bench_iters.push_back(static_cast<size_t>(std::stoull(token)));
             }
-            if (opt.bench_iters.empty()) opt.bench_iters = {1000, 10000, 50000};
+            if (opt.bench_iters.empty())
+                opt.bench_iters = {30000, 40000, 50000, 60000, 70000};
+        }
+        std::cout << "   Размеры генерируемых текстов через запятую (пусто — "
+                     "по умолчанию 1000,5000): ";
+        std::getline(std::cin, line);
+        if (!line.empty()) {
+            std::stringstream ss(line);
+            std::string token;
+            while (std::getline(ss, token, ',')) {
+                if (!token.empty())
+                    opt.bench_gen_sizes.push_back(static_cast<size_t>(std::stoull(token)));
+            }
+            if (opt.bench_gen_sizes.empty())
+                opt.bench_gen_sizes = {1000, 5000};
         }
         std::cout << "   Путь для CSV с бенчмарком (пусто — в stdout): ";
         std::getline(std::cin, opt.export_bench_csv);
@@ -103,7 +143,8 @@ void ExportCsv(const DictPtr& dict, const std::string& path) {
 
 template <typename DictPtr>
 double Benchmark(const DictPtr& dict, const std::vector<std::string>& words, size_t iters) {
-    if (words.empty() || iters == 0) return 0.0;
+    if (words.empty() || iters == 0)
+        return 0.0;
     auto start = Clock::now();
     volatile int acc = 0;
     for (size_t i = 0; i < iters; ++i) {
@@ -119,16 +160,17 @@ double Benchmark(const DictPtr& dict, const std::vector<std::string>& words, siz
 
 int main(int argc, char** argv) {
     CliOptions opt = InteractiveDialog();
-    std::string text = ReadText(opt.file_path);
-
-    std::vector<std::string> words_vec;
-    {
-        LexerStream lex_for_bench(text);
+    auto tokenize = [](const std::string& text) {
+        std::vector<std::string> res;
+        LexerStream lex(text);
         std::string tok;
-        while (lex_for_bench.Read(tok)) {
-            words_vec.push_back(tok);
-        }
-    }
+        while (lex.Read(tok))
+            res.push_back(tok);
+        return res;
+    };
+
+    std::string base_text = opt.gen_count ? GenerateText(opt.gen_count, opt.gen_max_len) : ReadText(opt.file_path);
+    std::vector<std::string> base_words = tokenize(base_text);
 
     auto print_dict = [](const auto& dict) {
         auto it = dict->GetIterator();
@@ -141,36 +183,49 @@ int main(int argc, char** argv) {
 
     struct BenchRow {
         std::string backend;
+        size_t text_size;
         size_t queries;
         double build_ms;
         double query_ms;
     };
     std::vector<BenchRow> bench_results;
 
-    auto run_backend = [&](const std::string& name, auto builder) {
+    auto run_backend = [&](const std::string& name, const std::string& text, const std::vector<std::string>& words) {
         auto build_start = Clock::now();
-        auto dict = builder();
+        auto dict = (name == "flat") ? BuildAlphabetIndex<FlatTable<std::string, int>>(text, opt.page_size, opt.mode)
+                                     : BuildAlphabetIndex<HashTable<std::string, int>>(text, opt.page_size, opt.mode);
         double build_ms = std::chrono::duration<double, std::milli>(Clock::now() - build_start).count();
         ExportCsv(dict, opt.export_csv);
         if (opt.bench) {
             for (auto q : opt.bench_iters) {
-                double ms = Benchmark(dict, words_vec, q);
-                bench_results.push_back({name, q, build_ms, ms});
+                double ms = Benchmark(dict, words, q);
+                bench_results.push_back({name, words.size(), q, build_ms, ms});
             }
         } else {
             print_dict(dict);
         }
     };
 
-    if (opt.backend == "flat" || opt.backend == "both") {
-        run_backend("flat", [&] {
-            return BuildAlphabetIndex<FlatTable<std::string, int>>(text, opt.page_size, opt.mode);
-        });
-    }
-    if (opt.backend == "hash" || opt.backend == "both") {
-        run_backend("hash", [&] {
-            return BuildAlphabetIndex<HashTable<std::string, int>>(text, opt.page_size, opt.mode);
-        });
+    auto process_text = [&](const std::string& text, const std::vector<std::string>& words, bool allow_print) {
+        if (opt.backend == "flat" || opt.backend == "both") {
+            run_backend("flat", text, words);
+        }
+        if (opt.backend == "hash" || opt.backend == "both") {
+            run_backend("hash", text, words);
+        }
+        (void)allow_print;  // printing уже внутри
+    };
+
+    process_text(base_text, base_words, true);
+
+    if (opt.bench) {
+        if (opt.bench_gen_sizes.empty())
+            opt.bench_gen_sizes = {10000, 50000};
+        for (auto sz : opt.bench_gen_sizes) {
+            std::string txt = GenerateText(sz, opt.gen_max_len);
+            auto w = tokenize(txt);
+            process_text(txt, w, false);
+        }
     }
 
     if (opt.bench && !bench_results.empty()) {
@@ -180,9 +235,10 @@ int main(int argc, char** argv) {
             file = std::make_unique<std::ofstream>(opt.export_bench_csv);
             out = file.get();
         }
-        (*out) << "backend,queries,build_ms,query_ms\n";
+        (*out) << "backend,text_size,queries,build_ms,query_ms\n";
         for (const auto& row : bench_results) {
-            (*out) << row.backend << "," << row.queries << "," << row.build_ms << "," << row.query_ms << "\n";
+            (*out) << row.backend << "," << row.text_size << "," << row.queries << "," << row.build_ms << ","
+                   << row.query_ms << "\n";
         }
     }
     return 0;
