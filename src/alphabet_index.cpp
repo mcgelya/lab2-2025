@@ -1,20 +1,17 @@
 #include "alphabet_index.hpp"
 
-#include <cctype>
-#include <utility>
-
 LexerStream::LexerStream(std::string text) : text_(std::move(text)) {
 }
 
 bool LexerStream::Read(std::string& out) {
-    while (pos_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[pos_]))) {
+    while (pos_ < text_.size() && std::isspace(text_[pos_])) {
         ++pos_;
     }
     if (pos_ >= text_.size()) {
         return false;
     }
     size_t start = pos_;
-    while (pos_ < text_.size() && !std::isspace(static_cast<unsigned char>(text_[pos_]))) {
+    while (pos_ < text_.size() && !std::isspace(text_[pos_])) {
         ++pos_;
     }
     out = text_.substr(start, pos_ - start);
@@ -59,6 +56,6 @@ bool PaginatorStream::Read(TokenPage& out) {
 
     current_size_ += wsize;
     out.word = std::move(token);
-    out.page = static_cast<int>(current_page_);
+    out.page = current_page_;
     return true;
 }

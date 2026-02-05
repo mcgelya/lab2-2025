@@ -258,13 +258,10 @@ TEST_CASE("SortedSeq") {
         REQUIRE_FALSE(seq.GetIsEmpty());
     }
 
-    SECTION("AddRemove") {
+    SECTION("Add") {
         seq.Add(0);
         seq.Add(6);
         REQUIRE(ToVector(seq) == std::vector<int>({0, 1, 2, 3, 4, 5, 6}));
-        REQUIRE(seq.Remove(3));
-        REQUIRE_FALSE(seq.Remove(42));
-        REQUIRE(ToVector(seq) == std::vector<int>({0, 1, 2, 4, 5, 6}));
         seq.EraseAt(0);
         REQUIRE(seq.GetFirst() == 1);
         seq.Clear();

@@ -56,7 +56,7 @@ public:
         if (pos == data_->GetLength() || !IsEqual(data_->Get(pos), value)) {
             return -1;
         }
-        return static_cast<int>(pos);
+        return pos;
     }
 
     SortedSequencePtr<T> GetSubsequence(size_t startIndex, size_t endIndex) const override {
@@ -80,22 +80,9 @@ public:
         return r;
     }
 
-    bool Contains(const T& value) const {
-        return IndexOf(value) != -1;
-    }
-
     void Add(const T& value) override {
         auto pos = LowerBound(value);
         data_->InsertAt(value, pos);
-    }
-
-    bool Remove(const T& value) {
-        auto idx = IndexOf(value);
-        if (idx == -1) {
-            return false;
-        }
-        data_->EraseAt(static_cast<size_t>(idx));
-        return true;
     }
 
     void EraseAt(size_t index) override {

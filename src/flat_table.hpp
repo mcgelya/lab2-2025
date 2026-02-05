@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdexcept>
-#include <utility>
 
 #include "idictionary.hpp"
 #include "isorted_sequence.hpp"
@@ -85,17 +84,7 @@ public:
 
 private:
     size_t LowerIndex(const Key& key) const {
-        size_t l = 0;
-        size_t r = data_->GetLength();
-        while (l < r) {
-            size_t mid = (l + r) / 2;
-            if (data_->Get(mid).key < key) {
-                l = mid + 1;
-            } else {
-                r = mid;
-            }
-        }
-        return l;
+        return data_->LowerBound(Pair{key, Value{}});
     }
 
 private:

@@ -18,7 +18,7 @@ struct CliOptions {
     std::string backend = "hash";  // hash | flat | both
     bool bench = false;
     std::vector<size_t> bench_iters = {30000, 40000, 50000, 60000, 70000};
-    std::vector<size_t> bench_gen_sizes = {10000, 50000};
+    std::vector<size_t> bench_gen_sizes = {1000, 5000};
     size_t gen_count = 0;
     size_t gen_max_len = 8;
     std::string export_csv;
@@ -146,7 +146,7 @@ double Benchmark(const DictPtr& dict, const std::vector<std::string>& words, siz
     if (words.empty() || iters == 0)
         return 0.0;
     auto start = Clock::now();
-    volatile int acc = 0;
+    int acc = 0;
     for (size_t i = 0; i < iters; ++i) {
         const auto& w = words[i % words.size()];
         if (dict->ContainsKey(w)) {
@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
 
     if (opt.bench) {
         if (opt.bench_gen_sizes.empty())
-            opt.bench_gen_sizes = {10000, 50000};
+            opt.bench_gen_sizes = {1000, 5000};
         for (auto sz : opt.bench_gen_sizes) {
             std::string txt = GenerateText(sz, opt.gen_max_len);
             auto w = tokenize(txt);

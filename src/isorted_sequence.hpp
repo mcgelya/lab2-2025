@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstddef>
 #include "fwd.hpp"
 #include "iiterator.hpp"
 
