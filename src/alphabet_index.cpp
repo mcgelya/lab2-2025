@@ -1,24 +1,122 @@
 #include "alphabet_index.hpp"
 
-LexerStream::LexerStream(std::string text) : text_(std::move(text)) {
+#include <cctype>
+
+#include "flat_table.hpp"
+#include "hash_table.hpp"
+#include "list_sequence.hpp"
+
+StringCharStream::StringCharStream(std::string t) : text_(std::move(t)) {
 }
 
-bool LexerStream::Read(std::string& out) {
-    while (pos_ < text_.size() && std::isspace(text_[pos_])) {
-        ++pos_;
-    }
-    if (pos_ >= text_.size()) {
+bool StringCharStream::Read(char& out) {
+    if (pos_ >= text_.size())
         return false;
-    }
-    size_t start = pos_;
-    while (pos_ < text_.size() && !std::isspace(text_[pos_])) {
-        ++pos_;
-    }
-    out = text_.substr(start, pos_ - start);
+    out = text_[pos_++];
     return true;
 }
 
-PaginatorStream::PaginatorStream(Stream<std::string>& source, size_t page_size, AlphabetIndexMode mode)
+bool StringCharStream::IsEnd() const {
+    return pos_ >= text_.size();
+}
+
+bool StringCharStream::Seek(size_t p) {
+    if (p > text_.size())
+        return false;
+    pos_ = p;
+    return true;
+}
+
+LexerStream::LexerStream(Stream<char>& source) : source_(source) {
+}
+
+bool LexerStream::Read(std::string& out) {
+    out.clear();
+    char ch;
+    while (source_.Read(ch)) {
+        if (!std::isspace(ch)) {
+            out.push_back(ch);
+            break;
+        }
+    }
+    if (out.empty()) {
+        return false;
+    }
+    while (source_.Read(ch)) {
+        if (std::isspace(ch)) {
+            break;
+        }
+        out.push_back(ch);
+    }
+    return true;
+}
+
+bool LexerStream::IsEnd() const {
+    return source_.IsEnd();
+}
+
+bool LexerStream::Seek(size_t pos) {
+    return source_.Seek(pos);
+}
+
+LineRenderer::LineRenderer(Stream<std::string>& source, size_t line_limit, AlphabetIndexMode mode)
+    : source_(source),
+      line_limit_(mode == AlphabetIndexMode::Words ? 1 : (line_limit / 2 == 0 ? 1 : line_limit / 2)),
+      mode_(mode) {
+}
+
+size_t WordWeight(const std::string& word, AlphabetIndexMode mode, size_t current) {
+    if (mode == AlphabetIndexMode::Words)
+        return 1;
+    return word.size() + (current == 0 ? 0 : 1);
+}
+
+bool LineRenderer::Read(Line& out) {
+    auto words = std::make_shared<ListSequence<std::string>>();
+    size_t used = 0;
+
+    auto add_word = [&](const std::string& w) -> bool {
+        size_t wsize = WordWeight(w, mode_, used);
+        if (used > 0 && used + wsize > line_limit_) {
+            pending_ = w;
+            has_pending_ = true;
+            return false;
+        }
+        used += wsize;
+        words->Append(w);
+        return true;
+    };
+
+    std::string token;
+    if (has_pending_) {
+        token = std::move(pending_);
+        has_pending_ = false;
+    } else if (!source_.Read(token)) {
+        return false;
+    }
+
+    while (true) {
+        if (!add_word(token)) {
+            break;
+        }
+        if (!source_.Read(token)) {
+            break;
+        }
+    }
+
+    if (words->GetLength() == 0) {
+        return false;
+    }
+
+    out.words = words;
+    return true;
+}
+
+bool LineRenderer::IsEnd() const {
+    return !has_pending_ && source_.IsEnd();
+}
+
+PaginatorStream::PaginatorStream(Stream<Line>& source, size_t page_size, AlphabetIndexMode mode)
     : source_(source), page_size_(page_size), mode_(mode) {
 }
 
@@ -32,30 +130,70 @@ size_t PaginatorStream::PageCapacity(size_t page) const {
     return cap == 0 ? 1 : cap;
 }
 
-size_t PaginatorStream::WordSize(const std::string& word, size_t current_size) const {
-    if (mode_ == AlphabetIndexMode::Words) {
-        return 1;
+size_t PaginatorStream::LineWeight(const Line& line, size_t current_size) const {
+    size_t total = 0;
+    bool first = true;
+    for (auto wit = line.words->GetIterator(); wit->HasNext(); wit->Next()) {
+        const auto& word = wit->GetCurrentItem();
+        if (mode_ == AlphabetIndexMode::Words) {
+            ++total;
+        } else {
+            total += word.size();
+            if (!first) {
+                ++total;
+            }
+        }
+        first = false;
     }
-    return word.size() + (current_size == 0 ? 0 : 1);
+    return total;
 }
 
-bool PaginatorStream::Read(TokenPage& out) {
-    std::string token;
-    if (!source_.Read(token)) {
+bool PaginatorStream::Read(Page& out) {
+    auto lines = std::make_shared<ListSequence<Line>>();
+    size_t cap = PageCapacity(current_page_);
+    size_t used = 0;
+
+    auto take_line = [&](const Line& line) -> bool {
+        size_t w = LineWeight(line, used);
+        if (used == 0 && w > cap) {
+            used += w;
+            lines->Append(line);
+            return true;
+        }
+        if (used + w > cap) {
+            pending_ = line;
+            has_pending_ = true;
+            return false;
+        }
+        used += w;
+        lines->Append(line);
+        return true;
+    };
+
+    if (has_pending_) {
+        if (!take_line(pending_)) {
+            return false;
+        }
+        has_pending_ = false;
+    }
+
+    Line line;
+    while (source_.Read(line)) {
+        if (!take_line(line)) {
+            break;
+        }
+    }
+
+    if (lines->GetLength() == 0) {
         return false;
     }
 
-    size_t cap = PageCapacity(current_page_);
-    size_t wsize = WordSize(token, current_size_);
-    if (current_size_ + wsize > cap && current_size_ > 0) {
-        ++current_page_;
-        current_size_ = 0;
-        cap = PageCapacity(current_page_);
-        wsize = WordSize(token, current_size_);
-    }
-
-    current_size_ += wsize;
-    out.word = std::move(token);
-    out.page = current_page_;
+    out.number = current_page_;
+    out.lines = lines;
+    ++current_page_;
     return true;
+}
+
+bool PaginatorStream::IsEnd() const {
+    return !has_pending_ && source_.IsEnd();
 }

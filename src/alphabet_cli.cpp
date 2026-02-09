@@ -100,7 +100,7 @@ CliOptions InteractiveDialog() {
             std::string token;
             while (std::getline(ss, token, ',')) {
                 if (!token.empty())
-                    opt.bench_iters.push_back(static_cast<size_t>(std::stoull(token)));
+                    opt.bench_iters.push_back(std::stoull(token));
             }
             if (opt.bench_iters.empty())
                 opt.bench_iters = {30000, 40000, 50000, 60000, 70000};
@@ -113,7 +113,7 @@ CliOptions InteractiveDialog() {
             std::string token;
             while (std::getline(ss, token, ',')) {
                 if (!token.empty())
-                    opt.bench_gen_sizes.push_back(static_cast<size_t>(std::stoull(token)));
+                    opt.bench_gen_sizes.push_back(std::stoull(token));
             }
             if (opt.bench_gen_sizes.empty())
                 opt.bench_gen_sizes = {1000, 5000};
@@ -161,8 +161,9 @@ double Benchmark(const DictPtr& dict, const std::vector<std::string>& words, siz
 int main(int argc, char** argv) {
     CliOptions opt = InteractiveDialog();
     auto tokenize = [](const std::string& text) {
+        StringCharStream chars(text);
+        LexerStream lex(chars);
         std::vector<std::string> res;
-        LexerStream lex(text);
         std::string tok;
         while (lex.Read(tok))
             res.push_back(tok);
@@ -192,8 +193,9 @@ int main(int argc, char** argv) {
 
     auto run_backend = [&](const std::string& name, const std::string& text, const std::vector<std::string>& words) {
         auto build_start = Clock::now();
-        auto dict = (name == "flat") ? BuildAlphabetIndex<FlatTable<std::string, int>>(text, opt.page_size, opt.mode)
-                                     : BuildAlphabetIndex<HashTable<std::string, int>>(text, opt.page_size, opt.mode);
+        auto book = (name == "flat") ? BuildBook<FlatTable<std::string, int>>(text, opt.page_size, opt.mode)
+                                     : BuildBook<HashTable<std::string, int>>(text, opt.page_size, opt.mode);
+        auto dict = book.index;
         double build_ms = std::chrono::duration<double, std::milli>(Clock::now() - build_start).count();
         ExportCsv(dict, opt.export_csv);
         if (opt.bench) {

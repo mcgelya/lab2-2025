@@ -84,6 +84,7 @@ class HashTable : public IDictionary<Key, Value> {
     static constexpr size_t kFactorNominator = 3;
     static constexpr size_t kFactorDenominator = 4;
     static constexpr size_t kScale = 2;
+    static constexpr size_t kMaxChainLength = 10;
 
 public:
     HashTable(Hasher hasher = Hasher()) : HashTable(kDefaultCapacity, std::move(hasher)) {
@@ -145,6 +146,9 @@ public:
                 cur->value = value;
                 return;
             }
+        }
+        if (chain->GetLength() + 1 >= kMaxChainLength) {
+            rehash_requested_ = true;
         }
         chain->Append(std::make_shared<KeyValue<Key, Value>>(key, value));
         ++size_;
@@ -215,7 +219,8 @@ public:
 
 private:
     void Rehash() {
-        if (size_ * kFactorDenominator < table_->GetLength() * kFactorNominator) {
+        bool need_rehash = rehash_requested_ || (size_ * kFactorDenominator >= table_->GetLength() * kFactorNominator);
+        if (!need_rehash) {
             return;
         }
         size_t new_capacity = kScale * table_->GetLength();
@@ -237,11 +242,12 @@ private:
             }
         }
         table_ = new_table;
+        rehash_requested_ = false;
     }
 
 private:
     SequencePtr<ChainPtr> table_;
     size_t size_;
-
+    bool rehash_requested_ = false;
     const Hasher hasher_;
 };

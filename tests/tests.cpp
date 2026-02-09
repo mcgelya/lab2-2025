@@ -232,11 +232,9 @@ TEST_CASE("HashCol") {
     REQUIRE_FALSE(table.ContainsKey(1));
     REQUIRE(table.GetCount() == 2);
 
-    // Remaining elements still retrievable
     REQUIRE(table.Get(2) == 200);
     REQUIRE(table.Get(3) == 30);
 
-    // Ensure iterator still walks surviving items
     std::unordered_set<int> keys_seen;
     auto it = table.GetIterator();
     while (it->HasNext()) {
@@ -349,8 +347,8 @@ TEST_CASE("FlatTable") {
 
 TEST_CASE("AIndexWords") {
     std::string text = "alpha beta gamma delta epsilon";
-    // page_size in words = 4, first page half -> 2 words
-    auto dict = BuildAlphabetIndex<HashTable<std::string, int>>(text, 4, AlphabetIndexMode::Words);
+    auto book = BuildBook<HashTable<std::string, int>>(text, 4, AlphabetIndexMode::Words);
+    auto dict = book.index;
     REQUIRE(dict->Get("alpha") == 1);
     REQUIRE(dict->Get("beta") == 1);
     REQUIRE(dict->Get("gamma") == 2);
@@ -360,8 +358,8 @@ TEST_CASE("AIndexWords") {
 
 TEST_CASE("AIndexChars") {
     std::string text = "aa bbb c ddd";
-    // page_size chars = 6, first page half -> 3 chars
-    auto dict = BuildAlphabetIndex<FlatTable<std::string, int>>(text, 6, AlphabetIndexMode::Chars);
+    auto book = BuildBook<FlatTable<std::string, int>>(text, 6, AlphabetIndexMode::Chars);
+    auto dict = book.index;
     REQUIRE(dict->Get("aa") == 1);
     REQUIRE(dict->Get("bbb") == 2);
     REQUIRE(dict->Get("c") == 2);
@@ -370,23 +368,24 @@ TEST_CASE("AIndexChars") {
 
 TEST_CASE("AIndexEmpty") {
     std::string text;
-    auto dict = BuildAlphabetIndex<HashTable<std::string, int>>(text, 10, AlphabetIndexMode::Words);
-    REQUIRE(dict->GetCount() == 0);
-    REQUIRE(ToVector(dict->GetKeys()).empty());
+    auto book = BuildBook<HashTable<std::string, int>>(text, 10, AlphabetIndexMode::Words);
+    REQUIRE(book.index->GetCount() == 0);
+    REQUIRE(ToVector(book.index->GetKeys()).empty());
 }
 
 TEST_CASE("AIndexRepeat") {
     std::string text = "a b c a d";
-    auto dict = BuildAlphabetIndex<FlatTable<std::string, int>>(text, 2, AlphabetIndexMode::Words);
-    REQUIRE(dict->Get("a") == 1);  // repeated later, keep first page
+    auto book = BuildBook<FlatTable<std::string, int>>(text, 2, AlphabetIndexMode::Words);
+    auto dict = book.index;
+    REQUIRE(dict->Get("a") == 1);
     REQUIRE(dict->Get("b") == 2);
     REQUIRE(dict->Get("c") == 2);
 }
 
 TEST_CASE("AIndexTiny") {
     std::string text = "aa bb c";
-    auto dict = BuildAlphabetIndex<HashTable<std::string, int>>(text, 1, AlphabetIndexMode::Chars);
-    REQUIRE(dict->Get("aa") == 1);
-    REQUIRE(dict->Get("bb") == 2);
-    REQUIRE(dict->Get("c") == 3);
+    auto book = BuildBook<HashTable<std::string, int>>(text, 1, AlphabetIndexMode::Chars);
+    REQUIRE(book.index->Get("aa") == 1);
+    REQUIRE(book.index->Get("bb") == 2);
+    REQUIRE(book.index->Get("c") == 3);
 }
