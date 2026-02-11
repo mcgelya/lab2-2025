@@ -11,7 +11,7 @@ public:
 
     virtual bool IsEnd() const = 0;
 
-    virtual bool Seek(size_t /*pos*/) {
+    virtual bool Seek(size_t) {
         return false;
     }
 };
