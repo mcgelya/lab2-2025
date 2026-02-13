@@ -1,6 +1,8 @@
 #include "alphabet_index.hpp"
 
 #include <cctype>
+#include <fstream>
+#include <iostream>
 
 #include "flat_table.hpp"
 #include "hash_table.hpp"
@@ -60,10 +62,7 @@ bool LexerStream::Seek(size_t pos) {
 }
 
 LineRenderer::LineRenderer(Stream<std::string>& source, size_t line_limit, AlphabetIndexMode mode)
-    : source_(source),
-      line_limit_(mode == AlphabetIndexMode::Words ? 1 : (line_limit / 2 == 0 ? 1 : line_limit / 2)),
-      mode_(mode) {
-}
+    : source_(source), line_limit_(line_limit == 0 ? 1 : line_limit), mode_(mode) {}
 
 size_t WordWeight(const std::string& word, AlphabetIndexMode mode, size_t current) {
     if (mode == AlphabetIndexMode::Words)
@@ -130,7 +129,7 @@ size_t PaginatorStream::PageCapacity(size_t page) const {
     return cap == 0 ? 1 : cap;
 }
 
-size_t PaginatorStream::LineWeight(const Line& line, size_t current_size) const {
+size_t PaginatorStream::LineWeight(const Line& line) const {
     size_t total = 0;
     bool first = true;
     for (auto wit = line.words->GetIterator(); wit->HasNext(); wit->Next()) {
@@ -154,7 +153,7 @@ bool PaginatorStream::Read(Page& out) {
     size_t used = 0;
 
     auto take_line = [&](const Line& line) -> bool {
-        size_t w = LineWeight(line, used);
+        size_t w = LineWeight(line);
         if (used == 0 && w > cap) {
             used += w;
             lines->Append(line);
@@ -196,4 +195,60 @@ bool PaginatorStream::Read(Page& out) {
 
 bool PaginatorStream::IsEnd() const {
     return !has_pending_ && source_.IsEnd();
+}
+
+void WriteBook(const Book& book, std::ostream& out) {
+    out << "Pages:\n";
+    if (book.pages == nullptr || book.pages->GetLength() == 0) {
+        out << "(empty)\n";
+    } else {
+        for (auto pit = book.pages->GetIterator(); pit->HasNext(); pit->Next()) {
+            const auto& page = pit->GetCurrentItem();
+            out << "Page " << page.number << ":\n";
+            size_t line_no = 1;
+            if (page.lines != nullptr) {
+                for (auto lit = page.lines->GetIterator(); lit->HasNext(); lit->Next()) {
+                    const auto& line = lit->GetCurrentItem();
+                    out << "  [" << line_no++ << "] ";
+                    bool first = true;
+                    if (line.words != nullptr) {
+                        for (auto wit = line.words->GetIterator(); wit->HasNext(); wit->Next()) {
+                            if (!first) {
+                                out << ' ';
+                            }
+                            out << wit->GetCurrentItem();
+                            first = false;
+                        }
+                    }
+                    out << '\n';
+                }
+            }
+        }
+    }
+
+    out << "Index:\n";
+    if (book.index == nullptr || book.index->GetCount() == 0) {
+        out << "(empty)\n";
+        return;
+    }
+    for (auto it = book.index->GetIterator(); it->HasNext(); it->Next()) {
+        const auto& kv = it->GetCurrentItem();
+        out << kv.key << " -> " << kv.value << '\n';
+    }
+}
+
+bool SaveBook(const Book& book, const std::string& path) {
+    if (path.empty()) {
+        return false;
+    }
+    if (path == "-") {
+        WriteBook(book, std::cout);
+        return true;
+    }
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        return false;
+    }
+    WriteBook(book, out);
+    return out.good();
 }

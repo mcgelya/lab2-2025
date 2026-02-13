@@ -51,7 +51,7 @@ public:
 
 private:
     size_t PageCapacity(size_t page) const;
-    size_t LineWeight(const Line& line, size_t current_size) const;
+    size_t LineWeight(const Line& line) const;
 
 private:
     Stream<Line>& source_;
@@ -79,11 +79,23 @@ struct Book {
     IDictionaryPtr<std::string, int> index;
 };
 
+void WriteBook(const Book& book, std::ostream& out);
+bool SaveBook(const Book& book, const std::string& path);
+
+inline size_t DefaultLineSize(size_t page_size, AlphabetIndexMode mode) {
+    if (mode == AlphabetIndexMode::Words) {
+        return 1;
+    }
+    const size_t half_page = page_size / 2;
+    return half_page == 0 ? 1 : half_page;
+}
+
 template <typename Dict>
-Book BuildBook(const std::string& text, size_t page_size, AlphabetIndexMode mode) {
+Book BuildBook(const std::string& text, size_t page_size, AlphabetIndexMode mode, size_t line_size = 0) {
     StringCharStream char_stream(text);
     LexerStream lexer(char_stream);
-    LineRenderer lines(lexer, page_size, mode);
+    const size_t line_limit = (line_size == 0) ? DefaultLineSize(page_size, mode) : line_size;
+    LineRenderer lines(lexer, line_limit, mode);
     PaginatorStream paginator(lines, page_size, mode);
     auto pages = std::make_shared<ListSequence<Page>>();
     auto index = std::make_shared<Dict>();

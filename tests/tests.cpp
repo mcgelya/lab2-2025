@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -388,4 +389,26 @@ TEST_CASE("AIndexTiny") {
     REQUIRE(book.index->Get("aa") == 1);
     REQUIRE(book.index->Get("bb") == 2);
     REQUIRE(book.index->Get("c") == 3);
+}
+
+TEST_CASE("BookWrite") {
+    std::string text = "alpha beta gamma";
+    auto book = BuildBook<FlatTable<std::string, int>>(text, 4, AlphabetIndexMode::Words);
+    std::ostringstream out;
+    WriteBook(book, out);
+    const std::string dumped = out.str();
+    REQUIRE(dumped.find("Pages:") != std::string::npos);
+    REQUIRE(dumped.find("Page 1:") != std::string::npos);
+    REQUIRE(dumped.find("alpha") != std::string::npos);
+    REQUIRE(dumped.find("Index:") != std::string::npos);
+}
+
+TEST_CASE("LineSizeWords") {
+    std::string text = "a b c d";
+    auto book = BuildBook<FlatTable<std::string, int>>(text, 10, AlphabetIndexMode::Words, 2);
+    REQUIRE(book.pages->GetLength() == 1);
+    const auto& page = book.pages->GetFirst();
+    REQUIRE(page.lines->GetLength() == 2);
+    const auto& first_line = page.lines->GetFirst();
+    REQUIRE(ToVector(first_line.words) == std::vector<std::string>({"a", "b"}));
 }

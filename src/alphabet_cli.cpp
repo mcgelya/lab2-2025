@@ -14,6 +14,7 @@ using Clock = std::chrono::steady_clock;
 struct CliOptions {
     std::string file_path;
     size_t page_size = 100;
+    size_t line_size = 0;
     AlphabetIndexMode mode = AlphabetIndexMode::Words;
     std::string backend = "hash";  // hash | flat | both
     bool bench = false;
@@ -22,6 +23,7 @@ struct CliOptions {
     size_t gen_count = 0;
     size_t gen_max_len = 8;
     std::string export_csv;
+    std::string export_book;
     std::string export_bench_csv;
 };
 
@@ -73,13 +75,17 @@ CliOptions InteractiveDialog() {
     std::getline(std::cin, line);
     if (!line.empty())
         opt.page_size = std::stoul(line);
+    std::cout << "3) Размер строки (0 = авто: words->1, chars->page/2) [0]: ";
+    std::getline(std::cin, line);
+    if (!line.empty())
+        opt.line_size = std::stoul(line);
 
-    std::cout << "3) Режим (w=words, c=chars) [w]: ";
+    std::cout << "4) Режим (w=words, c=chars) [w]: ";
     std::getline(std::cin, line);
     if (!line.empty() && (line[0] == 'c' || line[0] == 'C'))
         opt.mode = AlphabetIndexMode::Chars;
 
-    std::cout << "4) Структура (h=hash, f=flat, b=both) [h]: ";
+    std::cout << "5) Структура (h=hash, f=flat, b=both) [h]: ";
     std::getline(std::cin, line);
     if (!line.empty()) {
         if (line[0] == 'f' || line[0] == 'F')
@@ -88,7 +94,7 @@ CliOptions InteractiveDialog() {
             opt.backend = "both";
     }
 
-    std::cout << "5) Запустить бенчмарк? (y/n) [n]: ";
+    std::cout << "6) Запустить бенчмарк? (y/n) [n]: ";
     std::getline(std::cin, line);
     if (!line.empty() && (line[0] == 'y' || line[0] == 'Y')) {
         opt.bench = true;
@@ -122,8 +128,10 @@ CliOptions InteractiveDialog() {
         std::getline(std::cin, opt.export_bench_csv);
     }
 
-    std::cout << "6) Экспорт разбиения в CSV (оставьте пустым, чтобы пропустить): ";
+    std::cout << "7) Экспорт разбиения в CSV (оставьте пустым, чтобы пропустить): ";
     std::getline(std::cin, opt.export_csv);
+    std::cout << "8) Экспорт книги в TXT (путь файла или '-' для stdout, пусто — пропустить): ";
+    std::getline(std::cin, opt.export_book);
     return opt;
 }
 
@@ -190,14 +198,21 @@ int main(int argc, char** argv) {
         double query_ms;
     };
     std::vector<BenchRow> bench_results;
+    bool book_saved = false;
 
     auto run_backend = [&](const std::string& name, const std::string& text, const std::vector<std::string>& words) {
         auto build_start = Clock::now();
-        auto book = (name == "flat") ? BuildBook<FlatTable<std::string, int>>(text, opt.page_size, opt.mode)
-                                     : BuildBook<HashTable<std::string, int>>(text, opt.page_size, opt.mode);
+        auto book = (name == "flat") ? BuildBook<FlatTable<std::string, int>>(text, opt.page_size, opt.mode, opt.line_size)
+                                     : BuildBook<HashTable<std::string, int>>(text, opt.page_size, opt.mode, opt.line_size);
         auto dict = book.index;
         double build_ms = std::chrono::duration<double, std::milli>(Clock::now() - build_start).count();
         ExportCsv(dict, opt.export_csv);
+        if (!opt.export_book.empty() && !opt.bench && !book_saved) {
+            if (!SaveBook(book, opt.export_book)) {
+                std::cerr << "Не удалось сохранить книгу: " << opt.export_book << "\n";
+            }
+            book_saved = true;
+        }
         if (opt.bench) {
             for (auto q : opt.bench_iters) {
                 double ms = Benchmark(dict, words, q);
